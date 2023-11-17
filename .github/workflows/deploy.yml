@@ -1,0 +1,52 @@
+name: Deploy to App Runner 
+on:
+  push:
+    branches: [main] # Trigger workflow on git push to main branch
+  workflow_dispatch: # Allow manual invocation of the workflow
+
+jobs:  
+  deploy:
+    runs-on: ubuntu-latest
+    # These permissions are needed to interact with GitHub's OIDC Token endpoint.
+    permissions:
+      id-token: write
+      contents: read
+    
+    steps:            
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # Use GitHub OIDC provider
+          role-to-assume: ${{ secrets.AWS_ASSUME_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          
+      - name: Deploy to App Runner
+        id: deploy-apprunner
+        uses: awslabs/amazon-app-runner-deploy@main
+        env:
+          SERVER_PORT: 80
+          SECRET_ENV: secret_env
+        with:
+          service: apprunner-test-php
+          source-connection-arn: ${{ secrets.AWS_CONNECTION_SOURCE_ARN }}
+          repo: https://github.com/${{ github.repository }}
+          branch: ${{ github.ref }}
+          # https://docs.aws.amazon.com/AWSJavaScriptSDK/v3/latest/clients/client-apprunner/enums/runtime.html
+          runtime: PHP_81
+          build-command: echo build
+          start-command: echo start
+          port: 18000
+          region: ${{ secrets.AWS_REGION }}
+          cpu : 1
+          memory : 2
+          wait-for-service-stability-seconds: 600
+          copy-env-vars: |
+            SERVER_PORT
+          copy-secret-env-vars: |
+            SECRET_ENV
+          instance-role-arn: ${{ secrets.INSTANCE_ROLE_ARN }}
+          tags: >
+            { "env": "test" }
+      
+      - name: App Runner URL
+        run: echo "App runner URL ${{ steps.deploy-apprunner.outputs.service-url }}" 
